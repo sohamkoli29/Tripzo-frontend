@@ -46,4 +46,7 @@ export const api = {
   }),
   getPayments: () => apiFetch("/api/payments"),
   getPaymentById: (id) => apiFetch(`/api/payments/${id}`),
+  estimateFare: (body) => apiFetch("/api/rides/estimate", {
+  method: "POST", body: JSON.stringify(body)
+}),
 };

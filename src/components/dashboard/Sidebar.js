@@ -1,0 +1,105 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
+import { useEffect, useState } from "react";
+
+const navItems = [
+  { label: "Dashboard",   href: "/dashboard",          icon: "🏠" },
+  { label: "Book a Ride", href: "/dashboard/book",     icon: "🚖" },
+  { label: "My Rides",    href: "/dashboard/rides",    icon: "🗺️"  },
+  { label: "Payments",    href: "/dashboard/payments", icon: "💳" },
+  { label: "Profile",     href: "/dashboard/profile",  icon: "👤" },
+];
+
+export default function Sidebar({ user }) {
+  const pathname = usePathname();
+  const router   = useRouter();
+  const supabase = createClient();
+
+  const [profilePic, setProfilePic] = useState(null);
+  const [fullName, setFullName]     = useState("");
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const data = await api.getProfile();
+        if (data?.profile_picture) setProfilePic(data.profile_picture);
+        if (data?.full_name)       setFullName(data.full_name);
+      } catch {}
+    };
+    loadProfile();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/sign-in");
+  };
+
+  return (
+    <aside className="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50">
+
+      {/* Logo */}
+      <div className="p-6 border-b border-gray-800">
+        <h1 className="text-2xl font-bold text-yellow-400">🚖 RideApp</h1>
+        <p className="text-gray-500 text-xs mt-1">Your ride, your way</p>
+      </div>
+
+      {/* User Info */}
+      <div className="p-4 border-b border-gray-800 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-yellow-400 overflow-hidden flex items-center justify-center text-black font-bold text-lg flex-shrink-0">
+          {profilePic ? (
+            <img
+              src={profilePic}
+              alt="avatar"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            user?.email?.[0]?.toUpperCase() || "U"
+          )}
+        </div>
+        <div className="overflow-hidden">
+          <p className="text-white text-sm font-medium truncate">
+            {fullName || user?.email || "User"}
+          </p>
+          <p className="text-gray-500 text-xs">Rider</p>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200
+                ${isActive
+                  ? "bg-yellow-400 text-black"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                }`}
+            >
+              <span className="text-lg">{item.icon}</span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Sign Out */}
+      <div className="p-4 border-t border-gray-800">
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
+        >
+          <span className="text-lg">🚪</span>
+          Sign Out
+        </button>
+      </div>
+
+    </aside>
+  );
+}
