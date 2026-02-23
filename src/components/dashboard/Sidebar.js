@@ -11,6 +11,7 @@ const navItems = [
   { label: "Book a Ride", href: "/dashboard/book",     icon: "🚖" },
   { label: "My Rides",    href: "/dashboard/rides",    icon: "🗺️"  },
   { label: "Payments",    href: "/dashboard/payments", icon: "💳" },
+  { label: "Driver Dashboard", href: "/dashboard/driver",  icon: "🚗" },
   { label: "Profile",     href: "/dashboard/profile",  icon: "👤" },
 ];
 

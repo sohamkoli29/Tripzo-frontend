@@ -15,23 +15,27 @@ const MapView = dynamic(() => import("@/components/booking/MapView"), {
   ),
 });
 
-const statusConfig = {
-  requested:   { label: "Finding Driver...", icon: "🔍", color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30" },
-  accepted:    { label: "Driver Assigned",   icon: "✅", color: "text-blue-400",   bg: "bg-blue-400/10   border-blue-400/30"  },
-  in_progress: { label: "Ride In Progress",  icon: "🚖", color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/30"},
-  completed:   { label: "Ride Completed",    icon: "🎉", color: "text-green-400",  bg: "bg-green-400/10  border-green-400/30" },
-  cancelled:   { label: "Ride Cancelled",    icon: "❌", color: "text-red-400",    bg: "bg-red-400/10    border-red-400/30"   },
+const statusFlow = {
+  accepted:    { next: "in_progress", nextLabel: "Start Ride",    nextColor: "bg-blue-500  hover:bg-blue-400"  },
+  in_progress: { next: "completed",   nextLabel: "Complete Ride", nextColor: "bg-green-500 hover:bg-green-400" },
+  completed:   { next: null,          nextLabel: null,            nextColor: null                              },
+  cancelled:   { next: null,          nextLabel: null,            nextColor: null                              },
 };
 
-// Riders can cancel if ride hasn't started yet
-const CANCELLABLE_STATUSES = ["requested", "accepted"];
+const statusConfig = {
+  accepted:    { label: "Ride Accepted",    icon: "✅", color: "text-blue-400",   bg: "bg-blue-400/10   border-blue-400/30"   },
+  in_progress: { label: "Ride In Progress", icon: "🚖", color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/30" },
+  completed:   { label: "Ride Completed",   icon: "🎉", color: "text-green-400",  bg: "bg-green-400/10  border-green-400/30"  },
+  cancelled:   { label: "Ride Cancelled",   icon: "❌", color: "text-red-400",    bg: "bg-red-400/10    border-red-400/30"    },
+};
 
-export default function RideDetailPage() {
+export default function DriverRideDetailPage() {
   const { id } = useParams();
   const router = useRouter();
 
   const [ride,        setRide]        = useState(null);
   const [loading,     setLoading]     = useState(true);
+  const [updating,    setUpdating]    = useState(false);
   const [cancelling,  setCancelling]  = useState(false);
   const [error,       setError]       = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -42,18 +46,36 @@ export default function RideDetailPage() {
         const data = await api.getRideById(id);
         setRide(data);
       } catch {
-        router.push("/dashboard/rides");
+        router.push("/dashboard/driver");
       } finally {
         setLoading(false);
       }
     };
 
     fetchRide();
-
-    // Poll for live status updates every 5s
     const interval = setInterval(fetchRide, 5000);
     return () => clearInterval(interval);
   }, [id]);
+
+  const handleStatusUpdate = async () => {
+    const flow = statusFlow[ride?.status];
+    if (!flow?.next) return;
+
+    setUpdating(true);
+    setError("");
+
+    try {
+      const { ride: updated } = await api.updateRideStatus(id, flow.next);
+      setRide(updated);
+      if (flow.next === "completed") {
+        setTimeout(() => router.push("/dashboard/driver"), 2000);
+      }
+    } catch (err) {
+      setError("Failed to update ride: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -63,6 +85,7 @@ export default function RideDetailPage() {
     try {
       const { ride: updated } = await api.updateRideStatus(id, "cancelled");
       setRide(updated);
+      setTimeout(() => router.push("/dashboard/driver"), 2000);
     } catch (err) {
       setError("Failed to cancel ride: " + err.message);
     } finally {
@@ -71,8 +94,10 @@ export default function RideDetailPage() {
   };
 
   const buildMapsUrl = () => {
-    if (!ride) return "#";
     const parts = ["https://www.google.com/maps/dir/?api=1"];
+    if (ride.pickup_lat && ride.pickup_lng) {
+      parts.push("origin=" + ride.pickup_lat + "," + ride.pickup_lng);
+    }
     if (ride.dropoff_lat && ride.dropoff_lng) {
       parts.push("destination=" + ride.dropoff_lat + "," + ride.dropoff_lng);
     }
@@ -91,11 +116,11 @@ export default function RideDetailPage() {
 
   if (!ride) return null;
 
-  const status      = statusConfig[ride.status] || statusConfig.requested;
-  const canCancel   = CANCELLABLE_STATUSES.includes(ride.status);
-  const isActive    = ride.status === "requested" || ride.status === "accepted" || ride.status === "in_progress";
+  const status   = statusConfig[ride.status] || statusConfig.accepted;
+  const flow     = statusFlow[ride.status];
+  const isActive = ride.status === "accepted" || ride.status === "in_progress";
 
-  const pickup  = ride.pickup_lat  && ride.pickup_lng
+  const pickup  = ride.pickup_lat && ride.pickup_lng
     ? { lat: ride.pickup_lat,  lng: ride.pickup_lng  }
     : null;
   const dropoff = ride.dropoff_lat && ride.dropoff_lng
@@ -103,10 +128,10 @@ export default function RideDetailPage() {
     : null;
 
   const tripItems = [
-    { label: "Fare",       value: "$" + ride.fare,                   icon: "💳" },
-    { label: "Distance",   value: ride.distance_km + " km",          icon: "📍" },
-    { label: "Duration",   value: "~" + ride.duration_mins + " min", icon: "⏱️" },
-    { label: "Ride Type",  value: ride.ride_type,                    icon: "🚖" },
+    { label: "Your Earnings", value: "$" + ride.fare,                   icon: "💰" },
+    { label: "Distance",      value: ride.distance_km + " km",          icon: "📍" },
+    { label: "Est. Duration", value: "~" + ride.duration_mins + " min", icon: "⏱️" },
+    { label: "Ride Type",     value: ride.ride_type,                    icon: "🚖" },
   ];
 
   return (
@@ -120,10 +145,7 @@ export default function RideDetailPage() {
               <p className="text-4xl mb-3">⚠️</p>
               <h3 className="text-white font-bold text-lg">Cancel This Ride?</h3>
               <p className="text-gray-400 text-sm mt-2">
-                {ride.status === "accepted"
-                  ? "A driver has already been assigned. Are you sure you want to cancel?"
-                  : "Your ride request will be cancelled. Are you sure?"
-                }
+                The rider will be notified. This action cannot be undone.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3 pt-2">
@@ -148,13 +170,12 @@ export default function RideDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link
-          href="/dashboard/rides"
+          href="/dashboard/driver"
           className="text-gray-400 hover:text-white transition text-sm"
         >
-          Back to My Rides
+          Back to Driver Dashboard
         </Link>
-        {/* Cancel link in header for active cancellable rides */}
-        {canCancel && (
+        {isActive && (
           <button
             onClick={() => setShowConfirm(true)}
             disabled={cancelling}
@@ -176,35 +197,13 @@ export default function RideDetailPage() {
             Ride ID: {ride.id.slice(0, 8).toUpperCase()}
           </p>
         </div>
-        {/* Pulsing dot for active rides */}
-        {isActive && ride.status !== "in_progress" && (
+        {isActive && (
           <div className="relative">
             <div className="w-3 h-3 rounded-full bg-yellow-400" />
             <div className="absolute inset-0 rounded-full bg-yellow-400 animate-ping opacity-60" />
           </div>
         )}
-        {ride.status === "in_progress" && (
-          <div className="relative">
-            <div className="w-3 h-3 rounded-full bg-purple-400" />
-            <div className="absolute inset-0 rounded-full bg-purple-400 animate-ping opacity-60" />
-          </div>
-        )}
       </div>
-
-      {/* Driver assigned info */}
-      {ride.status === "accepted" && ride.driver_id && (
-        <div className="bg-blue-400/10 border border-blue-400/30 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-blue-400/20 flex items-center justify-center text-2xl flex-shrink-0">
-            🚗
-          </div>
-          <div>
-            <p className="text-blue-400 font-semibold">Driver is on the way!</p>
-            <p className="text-gray-400 text-sm mt-0.5">
-              Your driver has accepted the ride and is heading to pick you up.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Map */}
       {(pickup || dropoff) && (
@@ -213,9 +212,9 @@ export default function RideDetailPage() {
         </div>
       )}
 
-      {/* Route Info */}
+      {/* Route Card */}
       <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
-        <h2 className="text-white font-semibold mb-4">Your Route</h2>
+        <h2 className="text-white font-semibold mb-4">Rider Route</h2>
         <div className="flex gap-4 items-start mb-5">
           <div className="flex flex-col items-center gap-1 pt-1 flex-shrink-0">
             <div className="w-3 h-3 rounded-full bg-green-400" />
@@ -224,11 +223,15 @@ export default function RideDetailPage() {
           </div>
           <div className="flex-1 space-y-4 min-w-0">
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide">Pickup</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide">
+                Pick up rider at
+              </p>
               <p className="text-white text-sm mt-0.5">{ride.pickup_address}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide">Dropoff</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide">
+                Drop off rider at
+              </p>
               <p className="text-white text-sm mt-0.5">{ride.dropoff_address}</p>
             </div>
           </div>
@@ -239,7 +242,7 @@ export default function RideDetailPage() {
           rel="noreferrer"
           className="flex items-center justify-center gap-2 w-full bg-gray-800 hover:bg-gray-700 text-white font-medium py-3 rounded-xl transition text-sm"
         >
-          View in Google Maps
+          Open Navigation in Google Maps
         </a>
       </div>
 
@@ -270,57 +273,55 @@ export default function RideDetailPage() {
       {/* Action Buttons */}
       <div className="space-y-3 pb-8">
 
-        {/* Cancel button — only if ride hasn't started */}
-        {canCancel && (
+        {/* Primary action — Start or Complete */}
+        {flow?.next && (
+          <button
+            onClick={handleStatusUpdate}
+            disabled={updating || cancelling}
+            className={"w-full text-white font-bold py-4 rounded-xl transition-all text-base disabled:opacity-50 disabled:cursor-not-allowed " + flow.nextColor}
+          >
+            {updating ? "Updating ride status..." : flow.nextLabel}
+          </button>
+        )}
+
+        {/* Cancel button — only for active rides */}
+        {isActive && (
           <button
             onClick={() => setShowConfirm(true)}
-            disabled={cancelling}
+            disabled={cancelling || updating}
             className="w-full bg-red-500/10 border border-red-500/30 text-red-400 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition disabled:opacity-50"
           >
             {cancelling ? "Cancelling ride..." : "Cancel Ride"}
           </button>
         )}
 
-        {/* Ride in progress — can't cancel */}
-        {ride.status === "in_progress" && (
-          <div className="bg-purple-400/10 border border-purple-400/30 rounded-xl p-4 text-center">
-            <p className="text-purple-400 font-semibold text-sm">
-              Ride is in progress — cancellation not available
+        {/* Completed state */}
+        {ride.status === "completed" && (
+          <div className="bg-green-400/10 border border-green-400/30 rounded-xl p-5 text-center space-y-1">
+            <p className="text-green-400 font-bold text-lg">Ride Completed!</p>
+            <p className="text-gray-400 text-sm">
+              You earned{" "}
+              <span className="text-white font-semibold">${ride.fare}</span>.
+              {" "}Redirecting to dashboard...
             </p>
           </div>
         )}
 
-        {/* Completed — view receipt */}
-        {ride.status === "completed" && (
-          <Link
-            href="/dashboard/payments"
-            className="flex items-center justify-center w-full bg-yellow-400 text-black font-bold py-4 rounded-xl hover:bg-yellow-300 transition"
-          >
-            View Receipt
-          </Link>
-        )}
-
-        {/* Cancelled */}
+        {/* Cancelled state */}
         {ride.status === "cancelled" && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 text-center space-y-3">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 text-center space-y-1">
             <p className="text-red-400 font-bold text-lg">Ride Cancelled</p>
             <p className="text-gray-400 text-sm">
-              This ride has been cancelled.
+              Redirecting to dashboard...
             </p>
-            <Link
-              href="/dashboard/book"
-              className="inline-block bg-yellow-400 text-black font-bold px-6 py-2.5 rounded-xl hover:bg-yellow-300 transition text-sm"
-            >
-              Book a New Ride
-            </Link>
           </div>
         )}
 
         <Link
-          href="/dashboard"
+          href="/dashboard/driver"
           className="flex items-center justify-center w-full bg-gray-800 text-white font-semibold py-3 rounded-xl hover:bg-gray-700 transition"
         >
-          Back to Dashboard
+          Back to Driver Dashboard
         </Link>
 
       </div>

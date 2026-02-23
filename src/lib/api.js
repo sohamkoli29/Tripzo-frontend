@@ -49,4 +49,14 @@ export const api = {
   estimateFare: (body) => apiFetch("/api/rides/estimate", {
   method: "POST", body: JSON.stringify(body)
 }),
+// Add inside the api object at the bottom
+// Driver
+updateLocation:       (body) => apiFetch("/api/driver/location", {
+  method: "PUT", body: JSON.stringify(body)
+}),
+getDriverStatus:      ()     => apiFetch("/api/driver/status"),
+getAvailableRides:    (lat, lng) =>
+  apiFetch(`/api/driver/available-rides?lat=${lat}&lng=${lng}&radius_km=15`),
+getMyDriverRides:     ()     => apiFetch("/api/driver/my-rides"),
+getDriverStats:       ()     => apiFetch("/api/driver/stats"),
 };
