@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useRideRealtime } from "@/hooks/useRideRealtime";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -16,14 +17,13 @@ const MapView = dynamic(() => import("@/components/booking/MapView"), {
 });
 
 const statusConfig = {
-  requested:   { label: "Finding Driver...", icon: "🔍", color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30" },
-  accepted:    { label: "Driver Assigned",   icon: "✅", color: "text-blue-400",   bg: "bg-blue-400/10   border-blue-400/30"  },
-  in_progress: { label: "Ride In Progress",  icon: "🚖", color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/30"},
-  completed:   { label: "Ride Completed",    icon: "🎉", color: "text-green-400",  bg: "bg-green-400/10  border-green-400/30" },
-  cancelled:   { label: "Ride Cancelled",    icon: "❌", color: "text-red-400",    bg: "bg-red-400/10    border-red-400/30"   },
+  requested:   { label: "Finding Driver...", icon: "🔍", color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30"  },
+  accepted:    { label: "Driver Assigned",   icon: "✅", color: "text-blue-400",   bg: "bg-blue-400/10   border-blue-400/30"   },
+  in_progress: { label: "Ride In Progress",  icon: "🚖", color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/30" },
+  completed:   { label: "Ride Completed",    icon: "🎉", color: "text-green-400",  bg: "bg-green-400/10  border-green-400/30"  },
+  cancelled:   { label: "Ride Cancelled",    icon: "❌", color: "text-red-400",    bg: "bg-red-400/10    border-red-400/30"    },
 };
 
-// Riders can cancel if ride hasn't started yet
 const CANCELLABLE_STATUSES = ["requested", "accepted"];
 
 export default function RideDetailPage() {
@@ -35,7 +35,9 @@ export default function RideDetailPage() {
   const [cancelling,  setCancelling]  = useState(false);
   const [error,       setError]       = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [driverLocation, setDriverLocation] = useState(null);
 
+  // Initial fetch
   useEffect(() => {
     const fetchRide = async () => {
       try {
@@ -47,13 +49,19 @@ export default function RideDetailPage() {
         setLoading(false);
       }
     };
-
     fetchRide();
-
-    // Poll for live status updates every 5s
-    const interval = setInterval(fetchRide, 5000);
-    return () => clearInterval(interval);
   }, [id]);
+
+  // Realtime subscription — replaces polling interval
+  useRideRealtime({
+    rideId: id,
+    onStatusChange: (updatedRide) => {
+      setRide(updatedRide);
+    },
+    onDriverLocationChange: (loc) => {
+      setDriverLocation(loc);
+    },
+  });
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -91,22 +99,26 @@ export default function RideDetailPage() {
 
   if (!ride) return null;
 
-  const status      = statusConfig[ride.status] || statusConfig.requested;
-  const canCancel   = CANCELLABLE_STATUSES.includes(ride.status);
-  const isActive    = ride.status === "requested" || ride.status === "accepted" || ride.status === "in_progress";
+  const status    = statusConfig[ride.status] || statusConfig.requested;
+  const canCancel = CANCELLABLE_STATUSES.includes(ride.status);
+  const isActive  = ["requested", "accepted", "in_progress"].includes(ride.status);
 
-  const pickup  = ride.pickup_lat  && ride.pickup_lng
+  const pickup  = ride.pickup_lat && ride.pickup_lng
     ? { lat: ride.pickup_lat,  lng: ride.pickup_lng  }
     : null;
   const dropoff = ride.dropoff_lat && ride.dropoff_lng
     ? { lat: ride.dropoff_lat, lng: ride.dropoff_lng }
     : null;
 
+  // Show driver location on map if available, otherwise show route
+  const mapPickup  = driverLocation || pickup;
+  const mapDropoff = driverLocation ? dropoff : dropoff;
+
   const tripItems = [
-    { label: "Fare",       value: "$" + ride.fare,                   icon: "💳" },
-    { label: "Distance",   value: ride.distance_km + " km",          icon: "📍" },
-    { label: "Duration",   value: "~" + ride.duration_mins + " min", icon: "⏱️" },
-    { label: "Ride Type",  value: ride.ride_type,                    icon: "🚖" },
+    { label: "Fare",      value: "$" + ride.fare,                   icon: "💳" },
+    { label: "Distance",  value: ride.distance_km + " km",          icon: "📍" },
+    { label: "Duration",  value: "~" + ride.duration_mins + " min", icon: "⏱️" },
+    { label: "Ride Type", value: ride.ride_type,                    icon: "🚖" },
   ];
 
   return (
@@ -153,7 +165,6 @@ export default function RideDetailPage() {
         >
           Back to My Rides
         </Link>
-        {/* Cancel link in header for active cancellable rides */}
         {canCancel && (
           <button
             onClick={() => setShowConfirm(true)}
@@ -177,10 +188,16 @@ export default function RideDetailPage() {
           </p>
         </div>
         {/* Pulsing dot for active rides */}
-        {isActive && ride.status !== "in_progress" && (
+        {ride.status === "requested" && (
           <div className="relative">
             <div className="w-3 h-3 rounded-full bg-yellow-400" />
             <div className="absolute inset-0 rounded-full bg-yellow-400 animate-ping opacity-60" />
+          </div>
+        )}
+        {ride.status === "accepted" && (
+          <div className="relative">
+            <div className="w-3 h-3 rounded-full bg-blue-400" />
+            <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-60" />
           </div>
         )}
         {ride.status === "in_progress" && (
@@ -191,8 +208,8 @@ export default function RideDetailPage() {
         )}
       </div>
 
-      {/* Driver assigned info */}
-      {ride.status === "accepted" && ride.driver_id && (
+      {/* Driver on the way banner */}
+      {ride.status === "accepted" && (
         <div className="bg-blue-400/10 border border-blue-400/30 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-blue-400/20 flex items-center justify-center text-2xl flex-shrink-0">
             🚗
@@ -206,10 +223,23 @@ export default function RideDetailPage() {
         </div>
       )}
 
+      {/* Live driver location notice */}
+      {driverLocation && isActive && (
+        <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-xl px-4 py-3 flex items-center gap-3">
+          <div className="relative flex-shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+            <div className="absolute inset-0 rounded-full bg-yellow-400 animate-ping opacity-60" />
+          </div>
+          <p className="text-yellow-400 text-sm font-medium">
+            Showing live driver location on map
+          </p>
+        </div>
+      )}
+
       {/* Map */}
       {(pickup || dropoff) && (
         <div className="h-64 rounded-2xl overflow-hidden border border-gray-800">
-          <MapView pickup={pickup} dropoff={dropoff} />
+          <MapView pickup={mapPickup} dropoff={mapDropoff} />
         </div>
       )}
 
@@ -281,7 +311,7 @@ export default function RideDetailPage() {
           </button>
         )}
 
-        {/* Ride in progress — can't cancel */}
+        {/* In progress — no cancel */}
         {ride.status === "in_progress" && (
           <div className="bg-purple-400/10 border border-purple-400/30 rounded-xl p-4 text-center">
             <p className="text-purple-400 font-semibold text-sm">
@@ -300,13 +330,11 @@ export default function RideDetailPage() {
           </Link>
         )}
 
-        {/* Cancelled */}
+        {/* Cancelled — book new ride */}
         {ride.status === "cancelled" && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 text-center space-y-3">
             <p className="text-red-400 font-bold text-lg">Ride Cancelled</p>
-            <p className="text-gray-400 text-sm">
-              This ride has been cancelled.
-            </p>
+            <p className="text-gray-400 text-sm">This ride has been cancelled.</p>
             <Link
               href="/dashboard/book"
               className="inline-block bg-yellow-400 text-black font-bold px-6 py-2.5 rounded-xl hover:bg-yellow-300 transition text-sm"

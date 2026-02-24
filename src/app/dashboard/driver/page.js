@@ -1,24 +1,41 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { useDriverNotifications } from "@/hooks/useNotifications";
 import DriverToggle      from "@/components/driver/DriverToggle";
 import AvailableRideCard from "@/components/driver/AvailableRideCard";
 import DriverStatsBar    from "@/components/driver/DriverStatsBar";
 
 export default function DriverDashboardPage() {
-  const [isOnline,        setIsOnline]        = useState(false);
-  const [location,        setLocation]        = useState(null);
-  const [availableRides,  setAvailableRides]  = useState([]);
-  const [stats,           setStats]           = useState(null);
-  const [loading,         setLoading]         = useState(true);
-  const [toggling,        setToggling]        = useState(false);
-  const [locationError,   setLocationError]   = useState("");
-  const [lastRefreshed,   setLastRefreshed]   = useState(null);
+  const supabase = createClient();
+
+  const [driverId,       setDriverId]       = useState(null);
+  const [isOnline,       setIsOnline]       = useState(false);
+  const [location,       setLocation]       = useState(null);
+  const [availableRides, setAvailableRides] = useState([]);
+  const [stats,          setStats]          = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [toggling,       setToggling]       = useState(false);
+  const [locationError,  setLocationError]  = useState("");
+  const [lastRefreshed,  setLastRefreshed]  = useState(null);
 
   const pollRef = useRef(null);
 
-  // Load initial driver status & stats
+  // Get driver user id for notification hook
+  useEffect(() => {
+    const getDriver = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setDriverId(user.id);
+    };
+    getDriver();
+  }, []);
+
+  // Realtime notification hook — fires when new ride requests come in
+  useDriverNotifications({ isOnline, driverId });
+
+  // Load initial driver status and stats
   useEffect(() => {
     const init = async () => {
       try {
@@ -28,12 +45,11 @@ export default function DriverDashboardPage() {
         ]);
         setIsOnline(statusData?.is_online || false);
         setStats(statsData);
-
         if (statusData?.lat && statusData?.lng) {
           setLocation({ lat: statusData.lat, lng: statusData.lng });
         }
       } catch (err) {
-        console.error("Init error:", err.message);
+        console.error("Driver init error:", err.message);
       } finally {
         setLoading(false);
       }
@@ -45,12 +61,12 @@ export default function DriverDashboardPage() {
   const getCurrentLocation = () =>
     new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error("Geolocation not supported"));
+        reject(new Error("Geolocation not supported by your browser"));
         return;
       }
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => reject(new Error("Location access denied")),
+        ()    => reject(new Error("Location access denied — please allow location in browser settings")),
         { enableHighAccuracy: true, timeout: 10000 }
       );
     });
@@ -80,14 +96,28 @@ export default function DriverDashboardPage() {
     return () => clearInterval(pollRef.current);
   }, [isOnline, location, fetchAvailableRides]);
 
-  // Toggle online/offline
+  // Also push location update to backend every 30s while online
+  useEffect(() => {
+    if (!isOnline || !location) return;
+
+    const locationInterval = setInterval(async () => {
+      try {
+        const coords = await getCurrentLocation();
+        setLocation(coords);
+        await api.updateLocation({ lat: coords.lat, lng: coords.lng, is_online: true });
+      } catch {}
+    }, 30000);
+
+    return () => clearInterval(locationInterval);
+  }, [isOnline]);
+
+  // Toggle online / offline
   const handleToggle = async () => {
     setToggling(true);
     setLocationError("");
 
     try {
       if (!isOnline) {
-        // Going online — get location first
         const coords = await getCurrentLocation();
         setLocation(coords);
 
@@ -100,7 +130,6 @@ export default function DriverDashboardPage() {
         setIsOnline(true);
         await fetchAvailableRides(coords);
       } else {
-        // Going offline
         await api.updateLocation({
           lat:       location?.lat || 0,
           lng:       location?.lng || 0,
@@ -116,9 +145,17 @@ export default function DriverDashboardPage() {
     }
   };
 
-  // Remove accepted ride from the list
+  // Remove accepted ride from list immediately
   const handleRideAccepted = (rideId) => {
     setAvailableRides((prev) => prev.filter((r) => r.id !== rideId));
+  };
+
+  // Refresh stats after ride completion
+  const refreshStats = async () => {
+    try {
+      const statsData = await api.getDriverStats();
+      setStats(statsData);
+    } catch {}
   };
 
   if (loading) {
@@ -140,21 +177,24 @@ export default function DriverDashboardPage() {
           <h1 className="text-3xl font-bold text-white">Driver Dashboard</h1>
           <p className="text-gray-400 mt-1">
             {isOnline
-              ? `${availableRides.length} ride${availableRides.length !== 1 ? "s" : ""} available near you`
+              ? availableRides.length + " ride" + (availableRides.length !== 1 ? "s" : "") + " available near you"
               : "Go online to see ride requests"
             }
           </p>
         </div>
         {lastRefreshed && isOnline && (
-          <p className="text-gray-600 text-xs">
-            Last updated {lastRefreshed.toLocaleTimeString([], {
-              hour: "2-digit", minute: "2-digit", second: "2-digit"
-            })}
-          </p>
+          <div className="text-right">
+            <p className="text-gray-600 text-xs">Auto-refreshing every 10s</p>
+            <p className="text-gray-600 text-xs mt-0.5">
+              {"Last updated " + lastRefreshed.toLocaleTimeString([], {
+                hour: "2-digit", minute: "2-digit", second: "2-digit"
+              })}
+            </p>
+          </div>
         )}
       </div>
 
-      {/* Online/Offline Toggle */}
+      {/* Online / Offline Toggle */}
       <DriverToggle
         isOnline={isOnline}
         onToggle={handleToggle}
@@ -163,16 +203,15 @@ export default function DriverDashboardPage() {
 
       {/* Location Error */}
       {locationError && (
-        <div className="bg-red-500/10 border border-red-500 text-red-400
-                        px-4 py-3 rounded-xl text-sm">
-          ❌ {locationError} — Please allow location access in your browser.
+        <div className="bg-red-500/10 border border-red-500 text-red-400 px-4 py-3 rounded-xl text-sm">
+          {locationError}
         </div>
       )}
 
       {/* Stats Bar */}
       <DriverStatsBar stats={stats} />
 
-      {/* Available Rides */}
+      {/* Available Rides — shown only when online */}
       {isOnline && (
         <div>
           <div className="flex items-center justify-between mb-4">
@@ -181,21 +220,20 @@ export default function DriverDashboardPage() {
             </h2>
             <button
               onClick={() => fetchAvailableRides(location)}
-              className="text-yellow-400 text-sm hover:underline"
+              className="text-yellow-400 text-sm hover:underline transition"
             >
-              Refresh ↻
+              Refresh
             </button>
           </div>
 
           {availableRides.length === 0 ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl
-                            p-12 text-center">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
               <p className="text-5xl mb-4">🔍</p>
               <p className="text-white font-semibold text-lg">
                 No rides nearby right now
               </p>
               <p className="text-gray-500 text-sm mt-2">
-                New requests will appear here automatically
+                New requests will appear here automatically and you will be notified
               </p>
             </div>
           ) : (
@@ -204,7 +242,10 @@ export default function DriverDashboardPage() {
                 <AvailableRideCard
                   key={ride.id}
                   ride={ride}
-                  onAccepted={handleRideAccepted}
+                  onAccepted={(rideId) => {
+                    handleRideAccepted(rideId);
+                    refreshStats();
+                  }}
                 />
               ))}
             </div>
@@ -212,19 +253,19 @@ export default function DriverDashboardPage() {
         </div>
       )}
 
-      {/* Offline Placeholder */}
+      {/* Offline placeholder */}
       {!isOnline && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center">
           <p className="text-6xl mb-4">🚗</p>
-          <p className="text-white font-semibold text-xl">You're offline</p>
+          <p className="text-white font-semibold text-xl">You are offline</p>
           <p className="text-gray-500 text-sm mt-2 mb-6">
-            Toggle the switch above to go online and start accepting rides
+            Toggle the switch above to go online and start accepting rides.
+            You will receive real-time notifications for new requests.
           </p>
           <button
             onClick={handleToggle}
             disabled={toggling}
-            className="bg-yellow-400 text-black font-bold px-8 py-3
-                       rounded-xl hover:bg-yellow-300 transition disabled:opacity-50"
+            className="bg-yellow-400 text-black font-bold px-8 py-3 rounded-xl hover:bg-yellow-300 transition disabled:opacity-50"
           >
             {toggling ? "Going online..." : "Go Online Now"}
           </button>

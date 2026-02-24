@@ -1,18 +1,34 @@
 import { createClient } from "@/lib/supabase/client";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ;
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// Automatically attaches the Supabase JWT token to every request
-async function apiFetch(endpoint, options = {}) {
+async function getToken() {
   const supabase = createClient();
+
+  // Try session first
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  if (session?.access_token) return session.access_token;
+
+  // Fallback — refresh the session
+  const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+  if (refreshed?.access_token) return refreshed.access_token;
+
+  return null;
+}
+
+async function apiFetch(endpoint, options = {}) {
+  const token = await getToken();
+
+  if (!token) {
+    console.warn("No auth token found for:", endpoint);
+    throw new Error("Not authenticated");
+  }
 
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
@@ -24,39 +40,38 @@ async function apiFetch(endpoint, options = {}) {
 
 export const api = {
   // Users
-  getProfile: () => apiFetch("/api/users/profile"),
+  getProfile:    ()     => apiFetch("/api/users/profile"),
   updateProfile: (body) => apiFetch("/api/users/profile", {
     method: "PUT", body: JSON.stringify(body)
   }),
 
   // Rides
-  createRide: (body) => apiFetch("/api/rides", {
+  createRide:      (body) => apiFetch("/api/rides", {
     method: "POST", body: JSON.stringify(body)
   }),
-  getRides: () => apiFetch("/api/rides"),
-  getRideById: (id) => apiFetch(`/api/rides/${id}`),
-  updateRideStatus: (id, status) => apiFetch(`/api/rides/${id}/status`, {
+  getRides:        ()     => apiFetch("/api/rides"),
+  getRideById:     (id)   => apiFetch(`/api/rides/${id}`),
+  updateRideStatus:(id, status) => apiFetch(`/api/rides/${id}/status`, {
     method: "PATCH", body: JSON.stringify({ status })
   }),
-  getAvailableRides: () => apiFetch("/api/rides/available"),
-
-  // Payments
-  createPayment: (body) => apiFetch("/api/payments", {
+  getAvailableRides: (lat, lng) =>
+    apiFetch(`/api/driver/available-rides?lat=${lat}&lng=${lng}&radius_km=15`),
+  estimateFare: (body) => apiFetch("/api/rides/estimate", {
     method: "POST", body: JSON.stringify(body)
   }),
-  getPayments: () => apiFetch("/api/payments"),
-  getPaymentById: (id) => apiFetch(`/api/payments/${id}`),
-  estimateFare: (body) => apiFetch("/api/rides/estimate", {
-  method: "POST", body: JSON.stringify(body)
-}),
-// Add inside the api object at the bottom
-// Driver
-updateLocation:       (body) => apiFetch("/api/driver/location", {
-  method: "PUT", body: JSON.stringify(body)
-}),
-getDriverStatus:      ()     => apiFetch("/api/driver/status"),
-getAvailableRides:    (lat, lng) =>
-  apiFetch(`/api/driver/available-rides?lat=${lat}&lng=${lng}&radius_km=15`),
-getMyDriverRides:     ()     => apiFetch("/api/driver/my-rides"),
-getDriverStats:       ()     => apiFetch("/api/driver/stats"),
+
+  // Payments
+  createPayment:  (body) => apiFetch("/api/payments", {
+    method: "POST", body: JSON.stringify(body)
+  }),
+  getPayments:    ()     => apiFetch("/api/payments"),
+  getPaymentById: (id)   => apiFetch(`/api/payments/${id}`),
+
+  // Driver
+  updateLocation:   (body) => apiFetch("/api/driver/location", {
+    method: "PUT", body: JSON.stringify(body)
+  }),
+  getDriverStatus:  ()     => apiFetch("/api/driver/status"),
+  getMyDriverRides: ()     => apiFetch("/api/driver/my-rides"),
+  getDriverStats:   ()     => apiFetch("/api/driver/stats"),
 };
