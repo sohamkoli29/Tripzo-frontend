@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useRideRealtime } from "@/hooks/useRideRealtime";
+import { StarDisplay } from "@/components/ratings/StarRating";       // ← NEW
+import RateRideModal from "@/components/ratings/RateRideModal";       // ← NEW
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import Script from "next/script";
@@ -42,6 +44,12 @@ export default function RideDetailPage() {
   const [paying,         setPaying]         = useState(false);
   const [paySuccess,     setPaySuccess]     = useState(false);
 
+  // ── NEW: Rating state ──────────────────────────────────────
+  const [existingRating, setExistingRating] = useState(null);
+  const [showRateModal,  setShowRateModal]  = useState(false);
+  const [ratingDone,     setRatingDone]     = useState(false);
+  // ──────────────────────────────────────────────────────────
+
   const checkPayment = async (rideId) => {
     try {
       const ps = await api.getPaymentStatus(rideId);
@@ -51,6 +59,18 @@ export default function RideDetailPage() {
     }
   };
 
+  // ── NEW: Check if ride already rated ──────────────────────
+  const checkRating = async (rideId) => {
+    try {
+      const { rating } = await api.getRatingByRide(rideId);
+      if (rating) {
+        setExistingRating(rating);
+        setRatingDone(true);
+      }
+    } catch {}
+  };
+  // ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     const fetchRide = async () => {
       try {
@@ -59,6 +79,11 @@ export default function RideDetailPage() {
         if (["in_progress", "completed"].includes(data.status)) {
           await checkPayment(id);
         }
+        // ── NEW: load existing rating for completed rides ──
+        if (data.status === "completed") {
+          await checkRating(id);
+        }
+        // ──────────────────────────────────────────────────
       } catch {
         router.push("/dashboard/rides");
       } finally {
@@ -68,7 +93,6 @@ export default function RideDetailPage() {
     fetchRide();
   }, [id]);
 
-  // Realtime subscription
   useRideRealtime({
     rideId: id,
     onStatusChange: async (updatedRide) => {
@@ -76,11 +100,16 @@ export default function RideDetailPage() {
       if (["in_progress", "completed"].includes(updatedRide.status)) {
         await checkPayment(id);
       }
+      // ── NEW: auto-show rating modal when ride just completes ──
+      if (updatedRide.status === "completed") {
+        await checkRating(id);
+        setTimeout(() => setShowRateModal(true), 1500);
+      }
+      // ─────────────────────────────────────────────────────────
     },
     onDriverLocationChange: (loc) => setDriverLocation(loc),
   });
 
-  // ── Razorpay inline payment ──────────────────────────────────────
   const handlePayOnline = async () => {
     if (!scriptReady) {
       setError("Payment gateway still loading, please wait a moment.");
@@ -168,10 +197,9 @@ export default function RideDetailPage() {
   const canCancel = CANCELLABLE_STATUSES.includes(ride.status);
   const isActive  = ["requested", "accepted", "in_progress"].includes(ride.status);
   const isPaid    = paymentStatus === "completed" || paymentStatus === "cash";
-  const canPayNow = ["in_progress", "completed"].includes(ride.status) && !isPaid;
 
-  const pickup  = ride.pickup_lat  && ride.pickup_lng  ? { lat: ride.pickup_lat,  lng: ride.pickup_lng  } : null;
-  const dropoff = ride.dropoff_lat && ride.dropoff_lng ? { lat: ride.dropoff_lat, lng: ride.dropoff_lng } : null;
+  const pickup    = ride.pickup_lat  && ride.pickup_lng  ? { lat: ride.pickup_lat,  lng: ride.pickup_lng  } : null;
+  const dropoff   = ride.dropoff_lat && ride.dropoff_lng ? { lat: ride.dropoff_lat, lng: ride.dropoff_lng } : null;
   const mapPickup = driverLocation || pickup;
 
   const tripItems = [
@@ -189,9 +217,23 @@ export default function RideDetailPage() {
         strategy="afterInteractive"
       />
 
+      {/* ── NEW: Rating Modal ──────────────────────────────────── */}
+      {showRateModal && !ratingDone && ride.status === "completed" && (
+        <RateRideModal
+          ride={ride}
+          onClose={() => setShowRateModal(false)}
+          onSubmitted={(r) => {
+            setExistingRating(r);
+            setRatingDone(true);
+            setShowRateModal(false);
+          }}
+        />
+      )}
+      {/* ──────────────────────────────────────────────────────── */}
+
       <div className="max-w-2xl space-y-6">
 
-        {/* ── Cancel Confirm Modal ─────────────────── */}
+        {/* Cancel Confirm Modal */}
         {showConfirm && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
@@ -219,14 +261,14 @@ export default function RideDetailPage() {
           </div>
         )}
 
-        {/* ── Pay Success Modal ────────────────────── */}
+        {/* Pay Success Modal */}
         {paySuccess && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-full max-w-sm space-y-5 text-center">
               <div className="text-6xl animate-bounce">🎉</div>
               <h3 className="text-white font-bold text-2xl">Payment Successful!</h3>
               <p className="text-gray-400 text-sm">
-                ₹{parseFloat(ride.fare).toFixed(2)} paid successfully. Your driver will complete the ride shortly.
+                ₹{parseFloat(ride.fare).toFixed(2)} paid successfully.
               </p>
               <div className="bg-gray-800 rounded-xl p-4 text-left space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -242,12 +284,19 @@ export default function RideDetailPage() {
                   <span className="text-green-400 font-semibold">Paid ✅</span>
                 </div>
               </div>
+              {/* ── NEW: after paying, offer to rate ── */}
               <button
-                onClick={() => setPaySuccess(false)}
+                onClick={() => {
+                  setPaySuccess(false);
+                  if (ride.status === "completed" && !ratingDone) {
+                    setShowRateModal(true);
+                  }
+                }}
                 className="w-full bg-yellow-400 text-black font-bold py-3 rounded-xl hover:bg-yellow-300 transition"
               >
                 Done
               </button>
+              {/* ─────────────────────────────────────── */}
             </div>
           </div>
         )}
@@ -307,14 +356,11 @@ export default function RideDetailPage() {
           </div>
         )}
 
-        {/* ── PAYMENT STRIP — shown during in_progress ── */}
+        {/* Payment Strip — in_progress */}
         {ride.status === "in_progress" && (
           <div className={
             "rounded-2xl border p-5 " +
-            (isPaid
-              ? "bg-green-400/10 border-green-400/30"
-              : "bg-yellow-400/10 border-yellow-400/30"
-            )
+            (isPaid ? "bg-green-400/10 border-green-400/30" : "bg-yellow-400/10 border-yellow-400/30")
           }>
             {isPaid ? (
               <div className="flex items-center gap-4">
@@ -334,7 +380,7 @@ export default function RideDetailPage() {
                   <div className="flex-1">
                     <p className="text-yellow-400 font-bold">Pay for your ride</p>
                     <p className="text-gray-400 text-sm mt-0.5">
-                      You can pay now while the ride is in progress, or your driver will collect payment at the end.
+                      Pay now while the ride is in progress, or pay cash to driver at the end.
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -342,38 +388,22 @@ export default function RideDetailPage() {
                     <p className="text-white font-bold text-xl">₹{parseFloat(ride.fare).toFixed(2)}</p>
                   </div>
                 </div>
-
-                {/* Payment methods grid */}
                 <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { icon: "💳", label: "Card" },
-                    { icon: "📱", label: "UPI"  },
-                    { icon: "🏦", label: "Net Banking" },
-                    { icon: "👛", label: "Wallets" },
-                  ].map((m) => (
+                  {[{ icon: "💳", label: "Card" }, { icon: "📱", label: "UPI" }, { icon: "🏦", label: "Net Banking" }, { icon: "👛", label: "Wallets" }].map((m) => (
                     <div key={m.label} className="bg-gray-800/60 rounded-xl p-2.5 flex items-center gap-2">
                       <span className="text-base">{m.icon}</span>
                       <span className="text-gray-400 text-xs">{m.label}</span>
                     </div>
                   ))}
                 </div>
-
                 <button
                   onClick={handlePayOnline}
                   disabled={paying || !scriptReady}
                   className="w-full bg-yellow-400 text-black font-bold py-3.5 rounded-xl hover:bg-yellow-300 transition disabled:opacity-50 disabled:cursor-not-allowed text-base"
                 >
-                  {paying
-                    ? "Opening Razorpay..."
-                    : !scriptReady
-                      ? "Loading payment..."
-                      : "Pay Now — ₹" + parseFloat(ride.fare).toFixed(2)
-                  }
+                  {paying ? "Opening Razorpay..." : !scriptReady ? "Loading payment..." : "Pay Now — ₹" + parseFloat(ride.fare).toFixed(2)}
                 </button>
-
-                <p className="text-gray-600 text-xs text-center">
-                  Secured by Razorpay · Or pay cash to driver at destination
-                </p>
+                <p className="text-gray-600 text-xs text-center">Secured by Razorpay · Or pay cash to driver at destination</p>
               </div>
             )}
           </div>
@@ -436,6 +466,53 @@ export default function RideDetailPage() {
           </div>
         </div>
 
+        {/* ── NEW: Rating Section — only on completed rides ──────── */}
+        {ride.status === "completed" && (
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
+            <h2 className="text-white font-semibold mb-5">Your Rating</h2>
+
+            {ratingDone && existingRating ? (
+              /* Already rated — show summary */
+              <div className="space-y-4">
+                <div className="flex items-center gap-5 bg-gray-800/50 rounded-2xl p-4">
+                  <div className="text-4xl font-bold text-yellow-400">{existingRating.stars}.0</div>
+                  <div>
+                    <StarDisplay value={existingRating.stars} size="md" showNumber={false} />
+                    <p className="text-gray-300 text-sm font-medium mt-1">
+                      {["", "Terrible", "Poor", "Okay", "Good", "Excellent"][existingRating.stars]}
+                    </p>
+                  </div>
+                </div>
+                {existingRating.review && (
+                  <div className="bg-gray-800 rounded-xl px-4 py-3 border-l-2 border-yellow-400/40">
+                    <p className="text-gray-300 text-sm italic leading-relaxed">"{existingRating.review}"</p>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowRateModal(true)}
+                  className="text-yellow-400 text-sm hover:underline transition"
+                >
+                  Edit rating →
+                </button>
+              </div>
+            ) : (
+              /* Not yet rated — prompt */
+              <div className="flex flex-col items-center gap-4 py-4">
+                <p className="text-gray-400 text-sm text-center max-w-xs">
+                  Help other riders by sharing your experience with this driver.
+                </p>
+                <button
+                  onClick={() => setShowRateModal(true)}
+                  className="flex items-center gap-2 bg-yellow-400 text-black font-bold px-8 py-3.5 rounded-2xl hover:bg-yellow-300 transition text-sm"
+                >
+                  <span>★</span> Rate This Ride
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {/* ──────────────────────────────────────────────────────── */}
+
         {/* Error */}
         {error && (
           <div className="bg-red-500/10 border border-red-500 text-red-400 px-4 py-3 rounded-xl text-sm">
@@ -446,17 +523,14 @@ export default function RideDetailPage() {
         {/* Action Buttons */}
         <div className="space-y-3 pb-8">
 
-          {/* Completed + unpaid → Pay Now button */}
+          {/* Completed + unpaid */}
           {ride.status === "completed" && !isPaid && (
             <button
               onClick={handlePayOnline}
               disabled={paying || !scriptReady}
               className="w-full bg-yellow-400 text-black font-bold py-4 rounded-xl hover:bg-yellow-300 transition disabled:opacity-50 text-base"
             >
-              {paying
-                ? "Opening Razorpay..."
-                : "Pay Now — ₹" + parseFloat(ride.fare).toFixed(2)
-              }
+              {paying ? "Opening Razorpay..." : "Pay Now — ₹" + parseFloat(ride.fare).toFixed(2)}
             </button>
           )}
 
@@ -470,8 +544,7 @@ export default function RideDetailPage() {
                   <p className="text-gray-500 text-xs mt-0.5">₹{parseFloat(ride.fare).toFixed(2)} paid</p>
                 </div>
               </div>
-              <Link href="/dashboard/payments"
-                className="text-yellow-400 text-sm hover:underline">
+              <Link href="/dashboard/payments" className="text-yellow-400 text-sm hover:underline">
                 Receipt →
               </Link>
             </div>
@@ -485,7 +558,7 @@ export default function RideDetailPage() {
             </button>
           )}
 
-          {/* In progress with no payment yet — reminder */}
+          {/* In progress — cash reminder */}
           {ride.status === "in_progress" && !isPaid && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
               <p className="text-gray-500 text-xs">

@@ -30,51 +30,37 @@ async function apiFetch(endpoint, options = {}) {
 }
 
 export const api = {
-  // Users
+  // ── Auth / Users ──────────────────────────────────────────
   getProfile:    ()     => apiFetch("/api/users/profile"),
-  updateProfile: (body) => apiFetch("/api/users/profile", {
-    method: "PUT", body: JSON.stringify(body),
-  }),
+  updateProfile: (body) => apiFetch("/api/users/profile", { method: "PUT", body: JSON.stringify(body) }),
 
-  // Rides
-  createRide:       (body)        => apiFetch("/api/rides", {
-    method: "POST", body: JSON.stringify(body),
-  }),
-  getRides:         ()            => apiFetch("/api/rides"),
-  getRideById:      (id)          => apiFetch(`/api/rides/${id}`),
-  updateRideStatus: (id, status)  => apiFetch(`/api/rides/${id}/status`, {
-    method: "PATCH", body: JSON.stringify({ status }),
-  }),
-  getAvailableRides: (lat, lng)   =>
-    apiFetch(`/api/driver/available-rides?lat=${lat}&lng=${lng}&radius_km=15`),
-  estimateFare: (body) => apiFetch("/api/rides/estimate", {
-    method: "POST", body: JSON.stringify(body),
-  }),
+  // ── Rides ─────────────────────────────────────────────────
+  createRide:       (body)       => apiFetch("/api/rides",            { method: "POST",  body: JSON.stringify(body) }),
+  getRides:         ()           => apiFetch("/api/rides"),
+  getRideById:      (id)         => apiFetch(`/api/rides/${id}`),
+  updateRideStatus: (id, status) => apiFetch(`/api/rides/${id}/status`,{ method: "PATCH", body: JSON.stringify({ status }) }),
+  estimateFare:     (body)       => apiFetch("/api/rides/estimate",   { method: "POST",  body: JSON.stringify(body) }),
 
-  // Payments (legacy)
-  createPayment:  (body) => apiFetch("/api/payments", {
-    method: "POST", body: JSON.stringify(body),
-  }),
-  getPayments:    ()     => apiFetch("/api/payments"),
-  getPaymentById: (id)   => apiFetch(`/api/payments/${id}`),
+  // ── Payments ──────────────────────────────────────────────
+  getPayments:    () => apiFetch("/api/payments"),
+  getPaymentById: (id) => apiFetch(`/api/payments/${id}`),
 
-  // Driver
-  updateLocation:   (body) => apiFetch("/api/driver/location", {
-    method: "PUT", body: JSON.stringify(body),
-  }),
-  getDriverStatus:  ()     => apiFetch("/api/driver/status"),
-  getMyDriverRides: ()     => apiFetch("/api/driver/my-rides"),
-  getDriverStats:   ()     => apiFetch("/api/driver/stats"),
-
-  // Razorpay
-  createOrder:        (ride_id) => apiFetch("/api/razorpay/create-order", {
-    method: "POST", body: JSON.stringify({ ride_id }),
-  }),
-  verifyPayment:      (body)    => apiFetch("/api/razorpay/verify-payment", {
-    method: "POST", body: JSON.stringify(body),
-  }),
-  collectCashPayment: (ride_id) => apiFetch("/api/razorpay/cash-payment", {
-    method: "POST", body: JSON.stringify({ ride_id }),
-  }),
+  // ── Razorpay ──────────────────────────────────────────────
+  createOrder:        (ride_id) => apiFetch("/api/razorpay/create-order",  { method: "POST", body: JSON.stringify({ ride_id }) }),
+  verifyPayment:      (body)    => apiFetch("/api/razorpay/verify-payment", { method: "POST", body: JSON.stringify(body) }),
+  collectCashPayment: (ride_id) => apiFetch("/api/razorpay/cash-payment",  { method: "POST", body: JSON.stringify({ ride_id }) }),
   getPaymentStatus:   (ride_id) => apiFetch(`/api/razorpay/payment-status/${ride_id}`),
+
+  // ── Driver ────────────────────────────────────────────────
+  updateLocation:    (body)       => apiFetch("/api/driver/location",        { method: "PUT", body: JSON.stringify(body) }),
+  getDriverStatus:   ()           => apiFetch("/api/driver/status"),
+  getAvailableRides: (lat, lng)   => apiFetch(`/api/driver/available-rides?lat=${lat}&lng=${lng}&radius_km=15`),
+  getMyDriverRides:  ()           => apiFetch("/api/driver/my-rides"),
+  getDriverStats:    ()           => apiFetch("/api/driver/stats"),
+
+  // ── Ratings ───────────────────────────────────────────────
+  submitRating:     (body)        => apiFetch("/api/ratings",                 { method: "POST", body: JSON.stringify(body) }),
+  getRatingByRide:  (ride_id)     => apiFetch(`/api/ratings/ride/${ride_id}`),
+  getDriverRatings: (driver_id)   => apiFetch(`/api/ratings/driver/${driver_id}`),
+  getMyRatings:     ()            => apiFetch("/api/ratings/my-ratings"),
 };
