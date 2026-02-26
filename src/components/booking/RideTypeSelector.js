@@ -49,7 +49,7 @@ export default function RideTypeSelector({ selected, estimates, onChange }) {
             {estimates?.[type.id] && (
               <p className={`text-sm font-bold mt-2
                 ${selected === type.id ? "text-yellow-400" : "text-gray-300"}`}>
-                ${estimates[type.id]}
+                ₹{estimates[type.id]}
               </p>
             )}
           </button>

@@ -239,7 +239,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard icon="🚖" label="Total Rides"  value={rides.length}           sub="All time"              color="yellow" />
         <StatCard icon="✅" label="Completed"    value={completedRides.length}  sub="Successfully finished" color="green"  />
-        <StatCard icon="💳" label="Total Spent"  value={"$" + totalSpent}       sub="Across all rides"      color="blue"   />
+        <StatCard icon="💳" label="Total Spent"  value={"₹" + totalSpent}       sub="Across all rides"      color="blue"   />
         <StatCard icon="❌" label="Cancelled"    value={cancelledRides}         sub="Cancelled rides"       color="red"    />
       </div>
 

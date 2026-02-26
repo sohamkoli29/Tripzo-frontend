@@ -9,7 +9,7 @@ export default function FareEstimate({ fare, distance, duration, rideType }) {
 
       <div className="flex items-center justify-between">
         <span className="text-gray-400 text-sm">Estimated Fare</span>
-        <span className="text-white font-bold text-xl">${fare}</span>
+        <span className="text-white font-bold text-xl">₹{fare}</span>
       </div>
 
       <div className="border-t border-yellow-400/20 pt-3 grid grid-cols-2 gap-3">

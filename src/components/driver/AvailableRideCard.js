@@ -50,7 +50,7 @@ export default function AvailableRideCard({ ride, onAccepted }) {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-white font-bold text-xl">${ride.fare}</p>
+          <p className="text-white font-bold text-xl">  ₹{ride.fare}</p>
           {ride.distance_from_driver != null && (
             <p className="text-gray-500 text-xs mt-0.5">
               {ride.distance_from_driver.toFixed(1)} km away

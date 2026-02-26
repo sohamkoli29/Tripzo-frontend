@@ -1,8 +1,8 @@
 export default function DriverStatsBar({ stats }) {
   const items = [
-    { icon: "💰", label: "Today's Earnings", value: `$${stats?.today_earnings  ?? "0.00"}` },
+    { icon: "💰", label: "Today's Earnings", value: `₹${stats?.today_earnings  ?? "0.00"}` },
     { icon: "🚖", label: "Today's Trips",    value:    stats?.today_trips       ?? 0        },
-    { icon: "💳", label: "Total Earnings",   value: `$${stats?.total_earnings  ?? "0.00"}` },
+    { icon: "💳", label: "Total Earnings",   value: `₹${stats?.total_earnings  ?? "0.00"}` },
     { icon: "✅", label: "Total Trips",      value:    stats?.total_trips       ?? 0        },
   ];
 

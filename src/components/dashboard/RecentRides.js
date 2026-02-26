@@ -42,7 +42,7 @@ export default function RecentRides({ rides = [] }) {
                 {ride.status.replace("_", " ")}
               </span>
               <span className="text-white font-semibold text-sm">
-                ${ride.fare}
+                ₹{ride.fare}
               </span>
             </div>
           </div>

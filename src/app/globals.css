@@ -41,3 +41,7 @@ body {
 .animate-shrink {
   animation: shrink linear forwards;
 }
+.rupee::before {
+  content: '₹';
+  font-family: 'Noto Sans', sans-serif;
+}

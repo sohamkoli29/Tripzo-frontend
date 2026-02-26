@@ -193,7 +193,7 @@ export default function BookRidePage() {
                      hover:bg-yellow-300 transition-all disabled:opacity-40
                      disabled:cursor-not-allowed text-base"
         >
-          {booking ? "Booking your ride..." : `Book ${rideType.charAt(0).toUpperCase() + rideType.slice(1)} Ride${currentFare ? ` • $${currentFare}` : ""}`}
+          {booking ? "Booking your ride..." : `Book ${rideType.charAt(0).toUpperCase() + rideType.slice(1)} Ride${currentFare ? ` • ₹${currentFare}` : ""}`}
         </button>
 
         {/* Info note */}

@@ -42,7 +42,7 @@ export function useDriverNotifications({ isOnline, driverId }) {
 
           addToast({
             title:    "New Ride Request!",
-            body:     "$" + ride.fare + " — " + ride.ride_type + " ride nearby",
+            body:     "₹" + ride.fare + " — " + ride.ride_type + " ride nearby",
             icon:     "🔔",
             type:     "info",
             duration: 6000,
