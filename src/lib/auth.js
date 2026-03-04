@@ -1,6 +1,3 @@
-// frontend/src/lib/auth.js
-// Use this instead of calling createClient() + supabase.auth directly
-// in components. Ensures the singleton is always used.
 
 import { createClient } from "@/lib/supabase/client";
 

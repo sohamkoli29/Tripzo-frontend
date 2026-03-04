@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
-import LocationSearch    from "@/components/booking/LocationSearch";
-import RideTypeSelector  from "@/components/booking/RideTypeSelector";
-import FareEstimate      from "@/components/booking/FareEstimate";
+import LocationSearch from "@/components/booking/LocationSearch";
+import RideTypeSelector from "@/components/booking/RideTypeSelector";
+import FareEstimate from "@/components/booking/FareEstimate";
 
 // Load map dynamically to avoid SSR issues
 const MapView = dynamic(() => import("@/components/booking/MapView"), {
@@ -21,13 +21,13 @@ const MapView = dynamic(() => import("@/components/booking/MapView"), {
 export default function BookRidePage() {
   const router = useRouter();
 
-  const [pickup,    setPickup]    = useState(null);
-  const [dropoff,   setDropoff]   = useState(null);
-  const [rideType,  setRideType]  = useState("standard");
+  const [pickup, setPickup] = useState(null);
+  const [dropoff, setDropoff] = useState(null);
+  const [rideType, setRideType] = useState("standard");
   const [estimates, setEstimates] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null); // { distance_km, duration_mins }
-  const [booking,   setBooking]   = useState(false);
-  const [error,     setError]     = useState("");
+  const [booking, setBooking] = useState(false);
+  const [error, setError] = useState("");
 
   // Get distance & duration from Google Maps Directions API
   const fetchRouteInfo = useCallback(() => {
@@ -36,10 +36,10 @@ export default function BookRidePage() {
     const service = new google.maps.DistanceMatrixService();
     service.getDistanceMatrix(
       {
-        origins:      [{ lat: pickup.lat,  lng: pickup.lng  }],
+        origins: [{ lat: pickup.lat, lng: pickup.lng }],
         destinations: [{ lat: dropoff.lat, lng: dropoff.lng }],
-        travelMode:   google.maps.TravelMode.DRIVING,
-        unitSystem:   google.maps.UnitSystem.METRIC,
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.METRIC,
       },
       (response, status) => {
         if (status !== "OK") return;
@@ -47,11 +47,11 @@ export default function BookRidePage() {
         const element = response.rows[0].elements[0];
         if (element.status !== "OK") return;
 
-        const distance_km    = element.distance.value / 1000;
-        const duration_mins  = Math.ceil(element.duration.value / 60);
+        const distance_km = element.distance.value / 1000;
+        const duration_mins = Math.ceil(element.duration.value / 60);
 
         setRouteInfo({ distance_km, duration_mins });
-      }
+      },
     );
   }, [pickup, dropoff]);
 
@@ -62,7 +62,7 @@ export default function BookRidePage() {
     const fetchEstimates = async () => {
       try {
         const data = await api.estimateFare({
-          distance_km:   routeInfo.distance_km,
+          distance_km: routeInfo.distance_km,
           duration_mins: routeInfo.duration_mins,
         });
         setEstimates(data.estimates);
@@ -80,23 +80,23 @@ export default function BookRidePage() {
   }, [pickup, dropoff, fetchRouteInfo]);
 
   const handleBookRide = async () => {
-    if (!pickup)   return setError("Please select a pickup location.");
-    if (!dropoff)  return setError("Please select a dropoff location.");
+    if (!pickup) return setError("Please select a pickup location.");
+    if (!dropoff) return setError("Please select a dropoff location.");
 
     setBooking(true);
     setError("");
 
     try {
       const { ride } = await api.createRide({
-        pickup_address:  pickup.address,
+        pickup_address: pickup.address,
         dropoff_address: dropoff.address,
-        pickup_lat:      pickup.lat,
-        pickup_lng:      pickup.lng,
-        dropoff_lat:     dropoff.lat,
-        dropoff_lng:     dropoff.lng,
-        ride_type:       rideType,
-        distance_km:     routeInfo?.distance_km   || 5,
-        duration_mins:   routeInfo?.duration_mins || 10,
+        pickup_lat: pickup.lat,
+        pickup_lng: pickup.lng,
+        dropoff_lat: dropoff.lat,
+        dropoff_lng: dropoff.lng,
+        ride_type: rideType,
+        distance_km: routeInfo?.distance_km || 5,
+        duration_mins: routeInfo?.duration_mins || 10,
       });
 
       router.push(`/dashboard/rides/${ride.id}`);
@@ -110,11 +110,8 @@ export default function BookRidePage() {
   const currentFare = estimates?.[rideType];
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex gap-6">
-
-      {/* Left Panel — Booking Form */}
-      <div className="w-96 flex-shrink-0 flex flex-col gap-4 overflow-y-auto pr-1">
-
+    <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-8rem)]">
+      <div className="w-full lg:w-96 flex-shrink-0 flex flex-col gap-4">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-white">Book a Ride</h1>
@@ -123,7 +120,6 @@ export default function BookRidePage() {
 
         {/* Location Inputs */}
         <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 space-y-4">
-
           <LocationSearch
             label="Pickup Location"
             placeholder="Enter pickup address"
@@ -193,7 +189,9 @@ export default function BookRidePage() {
                      hover:bg-yellow-300 transition-all disabled:opacity-40
                      disabled:cursor-not-allowed text-base"
         >
-          {booking ? "Booking your ride..." : `Book ${rideType.charAt(0).toUpperCase() + rideType.slice(1)} Ride${currentFare ? ` • ₹${currentFare}` : ""}`}
+          {booking
+            ? "Booking your ride..."
+            : `Book ${rideType.charAt(0).toUpperCase() + rideType.slice(1)} Ride${currentFare ? ` • ₹${currentFare}` : ""}`}
         </button>
 
         {/* Info note */}
@@ -203,10 +201,9 @@ export default function BookRidePage() {
       </div>
 
       {/* Right Panel — Map */}
-      <div className="flex-1 rounded-2xl overflow-hidden bg-gray-900 border border-gray-800 min-h-96">
+      <div className="flex-1 rounded-2xl overflow-hidden bg-gray-900 border border-gray-800 h-80 lg:h-auto min-h-80">
         <MapView pickup={pickup} dropoff={dropoff} />
       </div>
-
     </div>
   );
 }

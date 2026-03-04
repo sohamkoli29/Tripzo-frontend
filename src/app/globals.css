@@ -45,3 +45,14 @@ body {
   content: '₹';
   font-family: 'Noto Sans', sans-serif;
 }
+/* Prevent horizontal overflow on mobile */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Bottom safe area padding for iOS */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

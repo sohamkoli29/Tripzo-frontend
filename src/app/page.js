@@ -1,3 +1,4 @@
+// frontend/src/app/page.js
 "use client";
 
 import { useEffect } from "react";
@@ -5,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function RootPage() {
-  const router   = useRouter();
-  const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     const redirect = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      // ✅ getSession() — reads localStorage, no network call
+      const { data: { session } } = await createClient().auth.getSession();
+      if (session?.user) {
         router.replace("/dashboard");
       } else {
         router.replace("/sign-in");

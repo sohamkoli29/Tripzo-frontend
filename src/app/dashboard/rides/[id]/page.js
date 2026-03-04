@@ -279,7 +279,7 @@ export default function RideDetailPage() {
                     <p className="text-white font-bold text-xl">₹{parseFloat(ride.fare).toFixed(2)}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
+             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[["💳","Card"],["📱","UPI"],["🏦","Net Banking"],["👛","Wallets"]].map(([icon,label]) => (
                     <div key={label} className="bg-gray-800/60 rounded-xl p-2 flex flex-col items-center gap-1">
                       <span>{icon}</span><span className="text-gray-400 text-xs">{label}</span>

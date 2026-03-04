@@ -81,14 +81,14 @@ export default function MyRidesPage() {
     <div className="space-y-6 max-w-3xl">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">My Rides</h1>
+ <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  <div>
+    <h1 className="text-2xl sm:text-3xl font-bold text-white">My Rides</h1>
           <p className="text-gray-400 mt-1">{rides.length} total ride{rides.length !== 1 ? "s" : ""}</p>
         </div>
         <Link
           href="/dashboard/book"
-          className="bg-yellow-400 text-black font-bold px-4 py-2.5 rounded-xl hover:bg-yellow-300 transition text-sm"
+          className="bg-yellow-400 text-black font-bold px-4 py-2.5 rounded-xl hover:bg-yellow-300 transition text-sm w-full sm:w-auto text-center"
         >
           + Book Ride
         </Link>
@@ -110,7 +110,7 @@ export default function MyRidesPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap overflow-x-auto pb-1">
         {FILTERS.map((f) => (
           <button
             key={f.key}

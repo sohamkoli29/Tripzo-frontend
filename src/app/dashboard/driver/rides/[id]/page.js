@@ -1,7 +1,9 @@
+// frontend/src/app/dashboard/driver/rides/[id]/page.js
 "use client";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -27,7 +29,9 @@ export default function DriverRideDetailPage() {
   const router  = useRouter();
 
   const [ride,           setRide]           = useState(null);
+  const [currentUserId,  setCurrentUserId]  = useState(null);
   const [loading,        setLoading]        = useState(true);
+  const [authError,      setAuthError]      = useState("");
   const [updating,       setUpdating]       = useState(false);
   const [cancelling,     setCancelling]     = useState(false);
   const [collectingCash, setCollectingCash] = useState(false);
@@ -36,12 +40,21 @@ export default function DriverRideDetailPage() {
   const [showCashModal,  setShowCashModal]  = useState(false);
   const [paymentStatus,  setPaymentStatus]  = useState("unpaid");
 
-  const loadRide = async () => {
+  const loadRide = async (userId) => {
     try {
       const [rideData, ps] = await Promise.all([
         api.getRideById(id),
         api.getPaymentStatus(id).catch(() => ({ status: "unpaid" })),
       ]);
+
+      // ── GUARD: make sure the logged-in user is actually the driver ──
+      if (rideData.driver_id && rideData.driver_id !== userId) {
+        setAuthError(
+          "You are viewing this page as a rider, not the driver. " +
+          "Switch to your driver account to manage this ride."
+        );
+      }
+
       setRide(rideData);
       setPaymentStatus(ps?.status || "unpaid");
     } catch {
@@ -52,12 +65,25 @@ export default function DriverRideDetailPage() {
   };
 
   useEffect(() => {
-    loadRide();
-    const interval = setInterval(loadRide, 5000);
+    (async () => {
+      // Get current logged-in user fresh from session
+      const { data: { session } } = await createClient().auth.getSession();
+      const uid = session?.user?.id;
+      setCurrentUserId(uid);
+      await loadRide(uid);
+    })();
+
+    const interval = setInterval(async () => {
+      const uid = currentUserId;
+      if (uid) await loadRide(uid);
+    }, 5000);
     return () => clearInterval(interval);
   }, [id]);
 
   const isPaid = paymentStatus === "completed" || paymentStatus === "cash";
+
+  // ── Check if current user is the driver of this ride ──
+  const isDriver = ride && currentUserId && ride.driver_id === currentUserId;
 
   const handleStartRide = async () => {
     setUpdating(true);
@@ -74,7 +100,7 @@ export default function DriverRideDetailPage() {
 
   const handleCompleteRide = async () => {
     if (!isPaid) {
-      setError("⚠️ Payment must be collected before completing the ride. Use 'Collect Cash' or wait for the rider to pay via app.");
+      setError("⚠️ Collect payment before completing. Use 'Collect Cash' or wait for rider to pay via app.");
       return;
     }
     setUpdating(true);
@@ -97,7 +123,6 @@ export default function DriverRideDetailPage() {
     try {
       await api.collectCashPayment(id);
       setPaymentStatus("cash");
-      // Now auto-complete the ride
       const { ride: updated } = await api.updateRideStatus(id, "completed");
       setRide(updated);
       setTimeout(() => router.push("/dashboard/driver"), 2500);
@@ -154,6 +179,22 @@ export default function DriverRideDetailPage() {
   return (
     <div className="max-w-2xl space-y-6">
 
+      {/* ── Wrong account warning ────────────────────────── */}
+      {authError && (
+        <div className="bg-orange-500/10 border border-orange-500/40 rounded-2xl p-5 flex items-start gap-4">
+          <span className="text-3xl flex-shrink-0">⚠️</span>
+          <div className="flex-1">
+            <p className="text-orange-400 font-bold">Wrong account</p>
+            <p className="text-gray-400 text-sm mt-1">{authError}</p>
+            <p className="text-gray-500 text-xs mt-2">
+              Driver ID on ride: <span className="text-white font-mono text-xs">{ride.driver_id?.slice(0, 8)}</span>
+              <br />
+              Your ID: <span className="text-white font-mono text-xs">{currentUserId?.slice(0, 8)}</span>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Cancel Modal ─────────────────────────────── */}
       {showConfirm && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -184,11 +225,8 @@ export default function DriverRideDetailPage() {
             <div className="text-center">
               <p className="text-5xl mb-3">💵</p>
               <h3 className="text-white font-bold text-xl">Collect Cash Payment</h3>
-              <p className="text-gray-400 text-sm mt-2">
-                Confirm you have received cash from the rider.
-              </p>
+              <p className="text-gray-400 text-sm mt-2">Confirm you have received cash from the rider.</p>
             </div>
-
             <div className="bg-gray-800 rounded-2xl p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Fare Amount</span>
@@ -203,11 +241,9 @@ export default function DriverRideDetailPage() {
                 <span className="text-white font-medium">{ride.id.slice(0, 8).toUpperCase()}</span>
               </div>
             </div>
-
             <p className="text-yellow-400/80 text-xs text-center">
               This will mark payment as collected and complete the ride.
             </p>
-
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => setShowCashModal(false)}
                 className="bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-xl transition">
@@ -227,7 +263,7 @@ export default function DriverRideDetailPage() {
         <Link href="/dashboard/driver" className="text-gray-400 hover:text-white transition text-sm">
           ← Back to Driver Dashboard
         </Link>
-        {isActive && (
+        {isActive && isDriver && (
           <button onClick={() => setShowConfirm(true)} disabled={cancelling}
             className="text-red-400 hover:text-red-300 text-sm font-medium transition disabled:opacity-50">
             Cancel Ride
@@ -250,7 +286,7 @@ export default function DriverRideDetailPage() {
         )}
       </div>
 
-      {/* Payment status strip — visible during in_progress */}
+      {/* Payment status strip */}
       {ride.status === "in_progress" && (
         <div className={
           "rounded-xl border p-4 flex items-center gap-4 " +
@@ -265,9 +301,7 @@ export default function DriverRideDetailPage() {
               }
             </p>
             {!isPaid && (
-              <p className="text-gray-500 text-xs mt-0.5">
-                Fare: ₹{parseFloat(ride.fare).toFixed(2)}
-              </p>
+              <p className="text-gray-500 text-xs mt-0.5">Fare: ₹{parseFloat(ride.fare).toFixed(2)}</p>
             )}
           </div>
         </div>
@@ -309,7 +343,7 @@ export default function DriverRideDetailPage() {
       {/* Trip Info */}
       <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
         <h2 className="text-white font-semibold mb-4">Trip Info</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {tripItems.map((item) => (
             <div key={item.label} className="bg-gray-800 rounded-xl p-4">
               <p className="text-gray-500 text-xs">{item.icon} {item.label}</p>
@@ -326,19 +360,31 @@ export default function DriverRideDetailPage() {
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="space-y-3 pb-8">
+      {/* ── Action Buttons — only shown to the actual driver ── */}
+      <div className="space-y-3 pb-16 sm:pb-8">
 
-        {/* ACCEPTED → Start Ride */}
-        {ride.status === "accepted" && (
+        {/* Not the driver — show read-only message */}
+        {!isDriver && ride.driver_id && (
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 text-center space-y-2">
+            <p className="text-gray-400 text-sm">
+              You are viewing this ride as a <span className="text-white font-semibold">rider</span>.
+            </p>
+            <p className="text-gray-500 text-xs">
+              Sign in as the driver account to manage this ride.
+            </p>
+          </div>
+        )}
+
+        {/* ACCEPTED → Start Ride (driver only) */}
+        {ride.status === "accepted" && isDriver && (
           <button onClick={handleStartRide} disabled={updating}
             className="w-full bg-blue-500 hover:bg-blue-400 text-white font-bold py-4 rounded-xl transition disabled:opacity-50 text-base">
             {updating ? "Starting..." : "🚀 Start Ride"}
           </button>
         )}
 
-        {/* IN PROGRESS → Cash or Complete */}
-        {ride.status === "in_progress" && (
+        {/* IN PROGRESS → Cash or Complete (driver only) */}
+        {ride.status === "in_progress" && isDriver && (
           <>
             {!isPaid && (
               <button
@@ -371,8 +417,8 @@ export default function DriverRideDetailPage() {
           </>
         )}
 
-        {/* Cancel */}
-        {isActive && (
+        {/* Cancel (driver only) */}
+        {isActive && isDriver && (
           <button onClick={() => setShowConfirm(true)} disabled={cancelling || updating}
             className="w-full bg-red-500/10 border border-red-500/30 text-red-400 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition disabled:opacity-50">
             {cancelling ? "Cancelling..." : "Cancel Ride"}
@@ -384,7 +430,7 @@ export default function DriverRideDetailPage() {
           <div className="bg-green-400/10 border border-green-400/30 rounded-xl p-5 text-center">
             <p className="text-green-400 font-bold text-xl">🎉 Ride Completed!</p>
             <p className="text-gray-400 text-sm mt-1">
-              You earned <span className="text-white font-bold">₹{parseFloat(ride.fare).toFixed(2)}</span>. Redirecting...
+              Earnings: <span className="text-white font-bold">₹{parseFloat(ride.fare).toFixed(2)}</span>
             </p>
           </div>
         )}
@@ -393,7 +439,6 @@ export default function DriverRideDetailPage() {
         {ride.status === "cancelled" && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 text-center">
             <p className="text-red-400 font-bold text-lg">Ride Cancelled</p>
-            <p className="text-gray-400 text-sm mt-1">Redirecting to dashboard...</p>
           </div>
         )}
 

@@ -6,34 +6,29 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKEN CACHE
 // ─────────────────────────────────────────────────────────────────────────────
-let _token      = null;   // cached JWT string
-let _expiresAt  = 0;      // unix ms when it expires
-let _refreshing = null;   // dedup: in-flight refresh promise
+let _token      = null;
+let _expiresAt  = 0;
+let _refreshing = null;
 
 async function getToken() {
   const now = Date.now();
 
-  // 1. Return cached token if fresh (90s buffer)
   if (_token && now < _expiresAt - 90_000) return _token;
-
-  // 2. Already refreshing — wait for it, don't fire another
   if (_refreshing) return _refreshing;
 
-  // 3. Start refresh — store promise so concurrent callers share it
   _refreshing = (async () => {
     try {
-      const supabase = createClient(); // always returns the singleton
+      const supabase = createClient();
 
-      // getSession() reads localStorage — zero network calls
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
+      // Step 1: try localStorage session first (zero network)
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
 
       if (session && session.access_token) {
         const exp = session.expires_at
           ? session.expires_at * 1000
           : now + (session.expires_in || 3600) * 1000;
 
-        // Use existing token if more than 90s remaining
         if (exp > now + 90_000) {
           _token     = session.access_token;
           _expiresAt = exp;
@@ -41,14 +36,19 @@ async function getToken() {
         }
       }
 
-      // Token missing or nearly expired — do ONE network refresh
+      // Step 2: token missing or nearly expired — do ONE network refresh
       const { data: refreshData, error } = await supabase.auth.refreshSession();
-      const fresh = refreshData.session;
+      const fresh = refreshData?.session;
 
-      if (error || !fresh || !fresh.access_token) {
+      if (error || !fresh?.access_token) {
+        // Clear cache so next call tries again instead of returning null
         _token     = null;
         _expiresAt = 0;
-        throw new Error("Session expired — please sign in again");
+        // Redirect to sign-in — session is truly gone
+        if (typeof window !== "undefined") {
+          window.location.href = "/sign-in";
+        }
+        throw new Error("Session expired — redirecting to sign in");
       }
 
       _token     = fresh.access_token;
@@ -58,14 +58,13 @@ async function getToken() {
 
       return _token;
     } finally {
-      _refreshing = null; // always release lock
+      _refreshing = null;
     }
   })();
 
   return _refreshing;
 }
 
-/** Call on sign-out to clear cached token */
 export function clearTokenCache() {
   _token      = null;
   _expiresAt  = 0;
@@ -73,9 +72,9 @@ export function clearTokenCache() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FETCH WRAPPER
+// FETCH WRAPPER — retries once with a fresh token on 401
 // ─────────────────────────────────────────────────────────────────────────────
-async function apiFetch(endpoint, options) {
+async function apiFetch(endpoint, options, _isRetry = false) {
   const token = await getToken();
 
   const res = await fetch(BASE_URL + endpoint, {
@@ -86,6 +85,13 @@ async function apiFetch(endpoint, options) {
       ...(options && options.headers),
     },
   });
+
+  // 401 — token was valid in cache but server rejected it (e.g. tab switch stomped localStorage)
+  // Bust the cache and retry exactly once with a fresh token
+  if (res.status === 401 && !_isRetry) {
+    clearTokenCache();
+    return apiFetch(endpoint, options, true);
+  }
 
   const responseData = await res.json();
   if (!res.ok) throw new Error(responseData.error || "API error " + res.status);

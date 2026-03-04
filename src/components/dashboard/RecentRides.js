@@ -23,7 +23,7 @@ export default function RecentRides({ rides = [] }) {
       </div>
       <div className="divide-y divide-gray-800">
         {rides.map((ride) => (
-          <div key={ride.id} className="p-5 flex items-center justify-between hover:bg-gray-800/50 transition">
+          <div key={ride.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-800/50 transition">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-xl">
                 🚖
@@ -37,7 +37,7 @@ export default function RecentRides({ rides = [] }) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-4 ml-4">
+            <div className="flex items-center gap-4 sm:ml-4">
               <span className={`text-xs px-3 py-1 rounded-full font-medium ${statusStyles[ride.status]}`}>
                 {ride.status.replace("_", " ")}
               </span>
